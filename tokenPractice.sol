@@ -9,39 +9,25 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 */
 
 /*
-
 payable function
 >> 이 함수를 호출시킬때 컨트랙트에다가 이더리움을 보낼수 있음
 >> 함수를 실행시킬때 이더리움이 필요한 함수에만 사용
-
 payable address
 payable(address) 로 감싸주면 그 어드레스에 이더리움을 보낼 수 있음(컨트랙트가)
-
 결론 : payable은 이더리움 전송에만 쓴다 // 이더리움 전송하는거 아니면 생각도 하지 말것
-
 */
 
 /*
-
 address[] depositor
-
 depositor 라는 친구는 address들의 배열이구나!
-
-
 선언 address[10] = 0x1234546545364565465656;
-
 아 address의 10번 친구는 0x1234546545364565465656 이구나!  xxxxxxxxxxxxxxxxxxxxxx
 address의 10번 친구는 어떤 메모리에 넣어야 하지???? 모르겠네 oooooooooooooooooooooo
-
-
-
 지정된 칸
 address[] depositor;
-
 address[20] = 0x123234;
 ㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅁㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅎㅛㅛㅛ0x123234ㅛㅛㅛㅛㅛㅛㅎㅎㅎㅎㅎㅎㅎㅁㅁㅁㅁ
 address[10] == 0x1234546545364565465656
-
 */
 
 
@@ -63,30 +49,49 @@ contract A is ERC20 { // A는 그냥 토큰
 }
 
 contract B { // B는 그냥 창고
+    event Deposit(address, uint256);
+    event Withdraw(address, uint256);
 
-    address private yourToken;
-    address private _getAddress;
+    address internal immutable yourToken;
 
-    mapping(address=>uint256) _deposit;
+    mapping(address => uint256) public _deposit;
 
     constructor(address token) {
         yourToken = token;
     }
 
-    function getAddress() private view returns(address) {
-        return msg.sender;
-    }
-
 // approve먼저 공부, 심화 숙제 : 혼자쓰는거 말고 누구나 쓸수있는 창고
-    function deposit(uint256 value) public {
-        _getAddress = getAddress();
-        ERC20(yourToken).approve(msg.sender, _deposit[msg.sender] += value);
-        ERC20(yourToken).transferFrom(msg.sender, _getAddress, value);
+    function deposit(uint256 amount) public {
+        _deposit[msg.sender] += amount;
+        ERC20(yourToken).transferFrom(msg.sender, address(this), amount);
+
+        emit Deposit(msg.sender, amount);
     }
 
-    function Withdraw(uint256 amount) public {
-        if(_deposit[msg.sender]>=amount) {
-            ERC20(yourToken).transfer(msg.sender, amount);
-        }
+    function withdraw(uint256 amount) public {
+        require(_deposit[msg.sender] >= amount, "test");
+        
+        _deposit[msg.sender] -= amount;
+        ERC20(yourToken).transfer(msg.sender, amount);
+
+        emit Withdraw(msg.sender, amount);
+    }
+}
+
+contract C {
+    uint256 public number;
+
+    constructor(uint256 val) {
+        number = val;
+    }
+
+// 값을 읽어서 쓰면 view
+    function foo(uint256 a, uint256 b) public view returns (uint256) {
+        return (number + a + b);
+    }
+
+// 읽는것 없으면 pure
+    function bar(uint256 a, uint256 b) public pure returns (uint256) {
+        return (a + b);
     }
 }
