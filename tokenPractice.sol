@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 /*
     mapping(address => uint256) public foo;
@@ -42,56 +43,68 @@ address[10] == 0x1234546545364565465656
 // decimal == 18 이기 때문에 0을 18개 붙이면 1개
 // 1000000000000000000 로 입력해서 1개 받음
 
-contract A is ERC20 { // A는 그냥 토큰
+contract ERC20_A is ERC20 { // A는 그냥 토큰
+    constructor(uint256 initialSupply) ERC20(unicode"tokenTest1", unicode"TST1") {
+        _mint(msg.sender, initialSupply);
+    }
+}
+
+contract ERC20_B is ERC20 { // A는 그냥 토큰
     constructor(uint256 initialSupply) ERC20(unicode"tokenTest2", unicode"TST2") {
         _mint(msg.sender, initialSupply);
     }
 }
 
-contract B { // B는 그냥 창고
-    event Deposit(address, uint256);
-    event Withdraw(address, uint256);
+contract ERC721_A is ERC721 {
+    uint256 private _tokenIds=0;
 
-    address internal immutable yourToken;
+    constructor() ERC721("Test NFT", "TNFT") {}
 
-    mapping(address => uint256) public _deposit;
-
-    constructor(address token) {
-        yourToken = token;
-    }
-
-// approve먼저 공부, 심화 숙제 : 혼자쓰는거 말고 누구나 쓸수있는 창고
-    function deposit(uint256 amount) public {
-        _deposit[msg.sender] += amount;
-        ERC20(yourToken).transferFrom(msg.sender, address(this), amount);
-
-        emit Deposit(msg.sender, amount);
-    }
-
-    function withdraw(uint256 amount) public {
-        require(_deposit[msg.sender] >= amount, "test");
-        
-        _deposit[msg.sender] -= amount;
-        ERC20(yourToken).transfer(msg.sender, amount);
-
-        emit Withdraw(msg.sender, amount);
+    function mint(address _to, uint256 _tokenId) external {
+        super._mint(_to, _tokenId);
     }
 }
 
-contract C {
-    uint256 public number;
+contract C { // B는 그냥 창고
+    event Deposit_ERC20(address, uint256);
+    event Deposit_ERC721(address, uint256);
+    event Withdraw_ERC20(address, uint256);
+    event Withdraw_ERC721(address, uint256);
 
-    constructor(uint256 val) {
-        number = val;
+    // address yourToken;
+
+    mapping(address => uint256) public _deposit;
+
+    constructor(){}
+
+    function deposit(uint256 tokenType, address yourToken, uint256 amount, uint256 _tokenId) public {
+        require(tokenType==20 || tokenType==721);
+        
+        if(tokenType==20){
+            _deposit[msg.sender] += amount;
+            ERC20(yourToken).transferFrom(msg.sender, address(this), amount);
+
+            emit Deposit_ERC20(msg.sender, amount);
+        } else {
+            ERC721(yourToken).transferFrom(msg.sender, address(this), _tokenId);
+            
+            emit Deposit_ERC721(msg.sender, _tokenId);
+        }
     }
 
-// 값을 읽어서 쓰면 view
-    function foo(uint256 a, uint256 b) public view returns (uint256) {
-        return (number + a + b);
-    }
+    function withdraw(uint256 tokenType, address yourToken, uint256 amount, uint256 _tokenId) public {
+        require(tokenType==20 || tokenType==721);
+        require(_deposit[msg.sender] >= amount, "test");
+        
+        if(tokenType==20){
+            _deposit[msg.sender] -= amount;
+            ERC20(yourToken).transfer(msg.sender, amount);
 
-// 읽는것 없으면 pure
-    function bar(uint256 a, uint256 b) public pure returns (uint256) {
-        return (a + b);
+            emit Withdraw_ERC20(msg.sender, amount);
+        } else {
+            ERC721(yourToken).transferFrom(address(this), msg.sender, _tokenId);
+            
+            emit Deposit_ERC721(msg.sender, _tokenId);
+        }
     }
 }
