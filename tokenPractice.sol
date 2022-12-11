@@ -43,19 +43,19 @@ address[10] == 0x1234546545364565465656
 // decimal == 18 이기 때문에 0을 18개 붙이면 1개
 // 1000000000000000000 로 입력해서 1개 받음
 
-contract ERC20_A is ERC20 { // A는 그냥 토큰
+contract ERC20_A is ERC20 { // ERC20 토큰
     constructor(uint256 initialSupply) ERC20(unicode"tokenTest1", unicode"TST1") {
         _mint(msg.sender, initialSupply);
     }
 }
 
-contract ERC20_B is ERC20 { // A는 그냥 토큰
+contract ERC20_B is ERC20 { // ERC20 토큰
     constructor(uint256 initialSupply) ERC20(unicode"tokenTest2", unicode"TST2") {
         _mint(msg.sender, initialSupply);
     }
 }
 
-contract ERC721_A is ERC721 {
+contract ERC721_A is ERC721 { // ERC721 토큰
     uint256 private _tokenIds=0;
 
     constructor() ERC721("Test NFT", "TNFT") {}
@@ -65,7 +65,7 @@ contract ERC721_A is ERC721 {
     }
 }
 
-contract C { // B는 그냥 창고
+contract C { // 창고
     event Deposit_ERC20(address, uint256);
     event Deposit_ERC721(address, uint256);
     event Withdraw_ERC20(address, uint256);
