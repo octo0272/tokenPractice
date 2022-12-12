@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 /*
     mapping(address => uint256) public foo;
     //foo[address] = uint256
@@ -56,55 +56,161 @@ contract ERC20_B is ERC20 { // ERC20 토큰
 }
 
 contract ERC721_A is ERC721 { // ERC721 토큰
-    uint256 private _tokenIds=0;
+    mapping(uint256 => string) _tokenUri;
 
     constructor() ERC721("Test NFT", "TNFT") {}
 
     function mint(address _to, uint256 _tokenId) external {
         super._mint(_to, _tokenId);
     }
+
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        _requireMinted(tokenId);
+
+        return _tokenUri[tokenId];
+    }
+
+    // 권한 설정했다고 가정
+    function setUri(string memory uri, uint256 tokenId) public {
+        _tokenUri[tokenId] = uri;
+    }
 }
+
+contract ERC1155_A is ERC1155 {
+    uint256 public constant testSet = 0;
+    constructor() ERC1155("Test ERC1155") {
+        _mint(msg.sender, testSet, 10**3, "");
+    }
+}
+
+contract market {
+    
+    mapping(address => uint256) public balance;    // 상품 판매 후 수령할 수 있는 잔액
+    mapping(address => mapping(uint256 => bool)) public exist_ERC721;
+    mapping(address => mapping(uint256 => uint256)) public _price;                              // 토큰 가격 정보            
+    mapping(address => mapping(uint256 => address)) public seller;                              // 판매자 정보
+
+    function sell(address _ERC721, uint256 tokenId, uint256 price) public {
+        require(ERC165(_ERC721).supportsInterface(0x80ac58cd)==true);                           // ERC721 토큰인지 확인
+            seller[_ERC721][tokenId] = msg.sender;                                              // 판매자 주소 저장
+            ERC721(_ERC721).transferFrom(msg.sender, address(this), tokenId);                   // 판매자에게 있는 ERC721 토큰을 market으로 전송            
+            _price[_ERC721][tokenId] = price;                                                   // 토큰 가격 등록            
+            exist_ERC721[_ERC721][tokenId] = true;
+    }
+
+    function buy(address _ERC20, address _ERC721, uint256 tokenId) public {
+        require(exist_ERC721[_ERC721][tokenId]==true);                                        // ERC721 토큰이 market에 있어야 함                                  
+        ERC721(_ERC721).approve(msg.sender, tokenId);
+        ERC20(_ERC20).transferFrom(msg.sender, address(this), _price[_ERC721][tokenId]);      // 구매자의 ERC20 토큰을 market 컨트랙트가 받음
+        ERC721(_ERC721).transferFrom(address(this), msg.sender, tokenId);                     // market에 있는 ERC721 토큰을 구매자에게 전송
+        
+        exist_ERC721[_ERC721][tokenId] = false;
+        address _seller = seller[_ERC721][tokenId];                                           
+        balance[_seller] += _price[_ERC721][tokenId];                                         // 판매자에게 돌려줘야 할 잔액 증가
+    }
+
+    function claim(address _ERC20) public {                                                   // 판매자에게 돌아가야 할 대금 전송
+        require(balance[msg.sender] > 0);
+        ERC20(_ERC20).approve(msg.sender, balance[msg.sender]);
+        ERC20(_ERC20).transferFrom(address(this), msg.sender, balance[msg.sender]);
+        balance[msg.sender] = 0;
+    }
+}
+
+
 
 contract C { // 창고
     event Deposit_ERC20(address, uint256);
     event Deposit_ERC721(address, uint256);
     event Withdraw_ERC20(address, uint256);
     event Withdraw_ERC721(address, uint256);
-
+    
     // address yourToken;
 
     mapping(address => uint256) public _deposit;
 
+    // 유저 >> 토큰ID >> 넣었는지 여부
+    mapping(address => mapping(uint256 => bool)) public _depositERC721;
+
     constructor(){}
 
-    function deposit(uint256 tokenType, address yourToken, uint256 amount, uint256 _tokenId) public {
-        require(tokenType==20 || tokenType==721);
-        
-        if(tokenType==20){
-            _deposit[msg.sender] += amount;
-            ERC20(yourToken).transferFrom(msg.sender, address(this), amount);
 
-            emit Deposit_ERC20(msg.sender, amount);
-        } else {
-            ERC721(yourToken).transferFrom(msg.sender, address(this), _tokenId);
+    // ERC20 >>> amount
+    // ERC721 >>> tokenId
+    function deposit(address yourToken, uint256 amountOrTokenId) public {
+
+        uint256 tokenType = typeCheck(yourToken);
+        require(tokenType > 0, "typeError");
+
+        if(tokenType == 1) {
+            _deposit[msg.sender] += amountOrTokenId;
+            ERC20(yourToken).transferFrom(msg.sender, address(this), amountOrTokenId);
+
+            emit Deposit_ERC20(msg.sender, amountOrTokenId);
+        } 
+        
+        if(tokenType == 2) {
+            _depositERC721[msg.sender][amountOrTokenId] = true;
+            ERC721(yourToken).transferFrom(msg.sender, address(this), amountOrTokenId);
             
-            emit Deposit_ERC721(msg.sender, _tokenId);
+            emit Deposit_ERC721(msg.sender, amountOrTokenId);
         }
     }
 
-    function withdraw(uint256 tokenType, address yourToken, uint256 amount, uint256 _tokenId) public {
-        require(tokenType==20 || tokenType==721);
-        require(_deposit[msg.sender] >= amount, "test");
+    function withdraw(address yourToken, uint256 amountOrTokenId) public {
+        uint256 tokenType = typeCheck(yourToken);
+        require(tokenType > 0, "typeError");
         
-        if(tokenType==20){
-            _deposit[msg.sender] -= amount;
-            ERC20(yourToken).transfer(msg.sender, amount);
+        if(tokenType == 1) {
+            require(_deposit[msg.sender] >= amountOrTokenId, "test");
+            _deposit[msg.sender] -= amountOrTokenId;
+            ERC20(yourToken).transfer(msg.sender, amountOrTokenId);
 
-            emit Withdraw_ERC20(msg.sender, amount);
-        } else {
-            ERC721(yourToken).transferFrom(address(this), msg.sender, _tokenId);
-            
-            emit Deposit_ERC721(msg.sender, _tokenId);
+            emit Withdraw_ERC20(msg.sender, amountOrTokenId);
+        } 
+        
+        if(tokenType == 2) {
+            require(_depositERC721[msg.sender][amountOrTokenId] == true, "test");
+            ERC721(yourToken).transferFrom(address(this), msg.sender, amountOrTokenId);
+            _depositERC721[msg.sender][amountOrTokenId] = false;
+
+            emit Withdraw_ERC721(msg.sender, amountOrTokenId);
         }
     }
+
+    // ERC20 : 0
+    // ERC721 : 2
+    // ERC1155 : 3
+    // 그 외 : 0
+        function typeCheck(address yourToken) public view returns (uint256) {
+            if(ERC165(yourToken).supportsInterface(0xd9b67a26)==true){
+                return 3;
+            } else if(ERC165(yourToken).supportsInterface(0x80ac58cd)==true) {
+                return 2;
+            } else {
+                return 0;
+            }
+        }
 }
+        
+
+    //        function typeCheck(address yourToken) public view returns (uint256) {
+    //     try ERC165(yourToken).supportsInterface(0x80ac58cd) returns (bool _isERC721) {
+    //         if(_isERC721) {
+    //             return 2;
+    //         } else {
+    //             return 0;
+    //         }
+    //     } catch {
+    //         try ERC165(yourToken).supportsInterface(0xd9b67a26) returns (bool _isERC1155) {
+    //             if(_isERC1155) {
+    //                 return 3;
+    //             }
+    //         } catch {
+    //             return 0;
+    //         }
+    //     }
+    //     return 0;
+    // }
+
+
